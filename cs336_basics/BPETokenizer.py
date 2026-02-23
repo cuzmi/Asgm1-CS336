@@ -5,6 +5,8 @@ b. Implement Transformer, cross-entropy loss, AdamW optimizer, training loop
 c. Train on TinyStories and OpenWebText
 d. Leaderboard: minimize OpenWebText perplexity given 90 minutes on a H100
 """
+import heapq
+
 
 class BPETokenizer():
 
@@ -15,87 +17,6 @@ class BPETokenizer():
         self.encode_table = {}
     
     def train(self, ori_text, num_merges = 100):
-        # token_list = sorted(list(set(ori_text)))
-
-        # for char in ori_text:
-        #     self.ori_char_freq[char] = self.ori_char_freq.get(char, 0) + 1 # z
-
-        # # ver1.循环的对象不清楚，为什么是ori_text，自己没理解就写上去了
-        # # # init condition
-        # # for char in ori_text:
-        # #     self.char_freq[char] = self.char_freq.get(char, 0) + 1 # freq_table
-        
-
-
-        # # # loop part
-
-        # # for idx, char in enumerate(ori_text[:-1]):
-        # #     pair = ori_text[idx] + ori_text[idx+1]
-        # #     self.pair_freq[pair] = self.pair_freq.get(pair, 0) + 1  # pair freq table
-        # #     if self.pair_freq[pair] >= 2:
-        # #         token_list += pair  # Add into chars and decline in char_freq
-        # #         self.char_freq[pair] = self.char_freq.get(pair, 0) + 1
-                
-        # #         self.char_freq[char] -= 1
-        # #         self.char_freq[ori_text[idx+1]] -= 1
-
-        # # ver2. 提前创建pair表格，确认是否存在2，直到pair value =1   //// ver2 这条路走不通
-        
-        # # 原始token_freq
-        # init_token_freq = {}
-        # for idx, char in enumerate(text):
-        #     init_token_freq[char] = init_token_freq.get(char, 0) + 1
-
-        # # 两两组合，原文匹配
-        # token_freq = init_token_freq
-        # merge = 1
-        # while merge:
-        #     num_merges -= 1
-        #     merge = None
-
-        #     token_list = list(token_freq.keys())
-
-        #     # pair_freq 
-        #     pair_freq = {}
-        #     for idx in range(len(token_list) - 1):
-        #         pair_tuple = (token_list[idx], token_list[idx + 1])  # 组合不够完全
-
-        #         pair = pair_tuple[0] + pair_tuple[1]
-
-        #         # 匹配
-        #         current_idx = 0
-                
-        #         while current_idx < len(text) - 1:
-        #             if text[current_idx] == pair[0] and text.startswith(pair, current_idx):
-        #                 pair_freq[pair_tuple] = pair_freq.get(pair_tuple, 0) + 1
-        #                 current_idx += len(pair)
-        #             else:
-        #                 current_idx += 1
-                
-        #     # 选出max_pair
-        #     max_pair_tuple = max(pair_freq, key=pair_freq.get)
-        #     freq_time = pair_freq[max_pair_tuple]
-        #     if freq_time == 1:
-        #         break
-        #     pair_str = max_pair_tuple[0] + max_pair_tuple[1]
-
-        #     # 更新token_freq
-        #     token_freq[pair_str] = freq_time
-        #     for char in max_pair_tuple:
-        #         token_freq[char] -= freq_time
-            
-        #     merge = 1
-
-        #     if num_merges == 0:
-        #         break
-
-        # return token_freq.keys()
-        
-        # ver2 存不存在什么问题，还有没有优化的版本？ 
-        # ver2 不符合业界的BPE逻辑，业界是刷新token来实现的，而不是在频率表上加减实现的 -- 但是能修改这部分来能同样达到作用吗？
-
-
-
 
         # ver3 刷新token initial
         token = list(ori_text)
@@ -146,67 +67,112 @@ class BPETokenizer():
             self.decode_table[idx] = char
         
         return token
-                    
 
-    # encode / decode都不需要在token里面操作，只需要等token结果出来之后直接进行分配就可以了
-    # def encode(self, text):
-        
-    #     # 首字母索引
-    #     first_letter_index = {}
-    #     for token in self.vocab_list:
-    #         first_letter = token[0]
-    #         if first_letter not in first_letter_index:
-    #             first_letter_index[first_letter] = []
+# rewrite
+class BPETokenizer2(): 
 
-    #         first_letter_index[first_letter].append(token)
+    def __init__(self):
+        self.vocab_list = []
+        self.merge_rule = []
 
-    #     # 最大排序
-    #     for char in first_letter_index:
-    #         first_letter_index[char].sort(key=len, reverse=True)
+    def train(self, text, num_merges = 100): # English text
+        # 正则匹配获得一些word chunk
+        chunk_list = list(set(self.pretokenizer(text)))
 
-    #     # 最大正向匹配
-    #     candidates = []
+        # 正向匹配 - 频率
+        chunk_freq = {'<unk>': 0}
+        current_idx = 0
 
-    #     current_idx = 0
-    #     encode_result = []
+        while current_idx < len(text):
+            first_letter = text[current_idx]
 
-    #     while current_idx < len(text):
-    #         letter = text[current_idx]
-    #         matched = None
+            candidates = [chunk for chunk in chunk_list if chunk.startswith(first_letter)]
+            candidates.sort(key=len, reverse=True)
 
-    #         candidates = first_letter_index.get(letter, [])
+            match = False
+            for candidate in candidates:
+                if text.startswith(candidate, current_idx):
+                    match = True
+                    current_idx += len(candidate)
 
-    #         for candidate in candidates:
-    #             if text.startswith(candidate, current_idx):
-    #                 matched = candidate
-    #                 break
+                    # chunk内部划分
+                    freq_name = " ".join(candidate)
+
+                    chunk_freq[freq_name] = chunk_freq.get(freq_name, 0) + 1
+
+                    break
+                
+            if not match:
+                chunk_freq['<unk>'] += 1
+                current_idx += 1
             
-    #         if matched:
-    #             encode = self.encode_table[matched]
-    #             encode_result.append(encode)
-    #             current_idx += len(matched)
-    #         else:
-    #             encode_result.append(0) # 0 代表 <UNK> 未知
-    #             i += 1
+        # 生成对应的pair"_freq & 反向索引
+        pair_freq = {}
+        pair2chunk = {}
+        for name, freq in chunk_freq.items():
+            if name == '<unk>':
+                continue
+            for idx in range(len(name)-1):
+                pair = (name[idx], name[idx+1]) # ('l','o')
+
+                pair_freq[pair] = pair_freq.get(pair, 0) + freq
+                pair2chunk[pair] = pair2chunk.get(pair, []).append(name)
+
+        for _ in range(num_merges):      
+            # 记录内部符号的全局频率 - 最大堆
+            max_heap = []
+            for pair, freq in pair_freq.items():
+                if name == '<unk>':
+                    continue
+                heapq.heappush(max_heap, (-freq, pair))
             
-    #     return encode_result
+            # 取出最高频率词，记录合并规则
+            max_pair = self.max_heap[0][1]
+            max_freq = - self.max_heap[0][0]
+            self.merge_rule.append([max_pair])
 
+            # 定位受影响词，然后定位受影响pair，改名
+            influ_chunks = pair2chunk[max_pair]
+            for chunk in influ_chunks:
+                for idx in range(len(chunk)-1):
+                
+                    if chunk[idx] == max_pair[0] and chunk.startswith(max_pair, idx):
+                        # 如果是开头
+                        if idx == 0 and "".join(max_pair) == chunk:
+                            past_chunk = None
+                            next_chunk = None
+                        if idx == 0:
+                            next_chunk = (chunk[idx+1], chunk[idx+2])
+                        
+                        if idx + 1 == len(chunk):
+                            next_chunk = None
+                        else:
+                            next_chunk = (chunk[idx+1], chunk[idx+2])
+                
+                if past_chunk:
+                    new_chunk = (past_chunk[0], "".join(max_pair))
+                    pair_freq[new_chunk] = pair_freq.pop(past_chunk)
+                    pair2chunk[new_chunk] = pair2chunk.pop(past_chunk)
+                
+                if next_chunk:
+                    new_chunk = (next_chunk[0], "".join(max_pair))
+                    pair_freq[new_chunk] = pair_freq.pop(next_chunk)
+                    pair2chunk[new_chunk] = pair2chunk.pop(next_chunk)
 
-    # def decode(self, nums):
+                if past_chunk or next_chunk:
+                    _ = pair_freq.pop(max_pair)
+                    _ = pair2chunk.pop(max_pair)
 
-    #     decode_result = []
-
-    #     for digit in nums:
-    #         token = self.decode_table[digit]
-    #         decode_result.append(token)
+            
         
-    #     text = ''.join(decode_result)
 
-    #     return text
+    
+    def pretokenizer(self):
 
 
-tokenizer = BPETokenizer()
-text = 'abbbbcdelf'
-print(('on running'))
-token = tokenizer.train(text)
-print(f'token是{token}')
+
+# tokenizer = BPETokenizer()
+# text = 'abbbbcdelf'
+# print(('on running'))
+# token = tokenizer.train(text)
+# print(f'token是{token}')
