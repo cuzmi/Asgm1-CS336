@@ -107,6 +107,7 @@ class BPETokenizer2():
             # 定位pair 影响的pair
             chunks = pair_chunk[max_pair] # [chunk1, chunk2, ...]
             for chunk in chunks:          
+                # 卡在了具体的更新上面，但是加入chunk_pair让整个更新更加简单了
                 
 
         
