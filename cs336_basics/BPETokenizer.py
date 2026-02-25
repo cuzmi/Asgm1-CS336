@@ -76,12 +76,24 @@ class BPETokenizer2():
         self.vocab_list = []
         self.merge_rule = []
 
+    def NotRemoveLast(ordered_pair, max_pair, last_pair):
+        for idx, pair in enumerate(ordered_pair):
+            if pair == max_pair:
+                if ordered_pair[idx - 1] != last_pair:
+                    return True
+    
+    def NotRemoveLast(ordered_pair, max_pair, next_pair):
+        for idx, pair in enumerate(ordered_pair):
+            if pair == max_pair:
+                if ordered_pair[idx + 1] != next_pair:
+                    return True
+
     def train(self, text, chunk_dict,num_merges = 100): # English text
         # chunk _dict = {chunk1: freq, chunk2: freq,...}
         # init part
         pair_freq = defaultdict(int) # pair = tuple (a,b)
-        pair_chunk = defaultdict(set)
-        chunk_pair = defaultdict(list)
+        pair_chunk = defaultdict(set)   # pair_chunk = {tuple: set(str)}
+        chunk_pair = defaultdict(list) # chunk_pair = {str: list(tuple)} ordered
         heap = []
         for chunk, freq in chunk_dict.items():
             chunk_list = list(chunk)
@@ -91,7 +103,7 @@ class BPETokenizer2():
                 pair_freq[pair] += freq
                 # 维护pair to chunk
                 pair_chunk[pair].add(chunk) # 这里collection.defaultdict 的用法/ 以及add和append<返回None>    PPPPPPPPPPPPoint1
-                chunk_pair[chunk].add(pair)
+                chunk_pair[chunk].append(pair)
        
         
         # 维护最大堆 pair_freq -> heap
@@ -105,9 +117,50 @@ class BPETokenizer2():
             self.merge_rule.append(max_pair)
 
             # 定位pair 影响的pair
-            chunks = pair_chunk[max_pair] # [chunk1, chunk2, ...]
+            chunks = pair_chunk[max_pair] # (chunk1, chunk2, ...)
             for chunk in chunks:          
-                # 卡在了具体的更新上面，但是加入chunk_pair让整个更新更加简单了
+                # 定位max_pair的位置
+                ordered_pair = chunk_pair[chunk]
+                for idx in range(len(ordered_pair)):
+                    if ordered_pair[idx] == pair:
+                        # 找到一个match的, 进行last, next， now的更改
+                        if idx != 0 and idx != len(ordered_pair):
+                            last_pair = ordered_pair[idx - 1]
+                            next_pair = ordered_pair[idx + 1]
+
+                            new_last_pair = (last_pair[0], "".join(max_pair))
+                            new_next_pair = ("".join(max_pair), next_pair[1])
+                            # update pair_freq
+                            pair_freq[new_last_pair] += max_freq
+                            pair_freq[new_next_pair] += max_freq
+
+                            pair_freq[last_pair] -= max_freq
+                            pair_freq[next_pair] -= max_freq
+
+                            pair_freq.pop(max_pair, None)
+
+                            # update pair_chunk
+                            pair_chunk[new_last_pair].add(chunk)
+                            pair_chunk[new_last_pair].add(chunk)
+
+                            if self.NotRemoveLast(ordered_pair, max_pair, last_pair):
+                                continue
+                            else:
+                                pair_chunk[last_pair].discard(chunk)
+
+                            if self.NotRemoveNext(ordered_pair, max_pair, next_pair):
+                                continue
+                            else:
+                                pair_chunk[next_pair].discard(chunk)
+
+                            pair_chunk.pop(max_pair, None)
+
+                            # update chunk_pair
+                            
+                        
+
+
+
                 
 
         
