@@ -17,7 +17,7 @@ class BPETokenizer():
         self.decode_table = {}
         self.encode_table = {}
     
-    def train(self, ori_text, num_merges = 100):
+    def train(self, ori_text, num_merges = 100): # 缺少了pre_tokenization -> 反向索引 / 最大堆维护 /// 重新思考逻辑流程
 
         # ver3 刷新token initial
         token = list(ori_text)
@@ -68,114 +68,6 @@ class BPETokenizer():
             self.decode_table[idx] = char
         
         return token
-
-# rewrite
-class BPETokenizer2(): 
-
-    def __init__(self):
-        self.vocab_list = []
-        self.merge_rule = []
-
-    def NotRemoveLast(ordered_pair, max_pair, last_pair):
-        for idx, pair in enumerate(ordered_pair):
-            if pair == max_pair:
-                if ordered_pair[idx - 1] != last_pair:
-                    return True
-    
-    def NotRemoveLast(ordered_pair, max_pair, next_pair):
-        for idx, pair in enumerate(ordered_pair):
-            if pair == max_pair:
-                if ordered_pair[idx + 1] != next_pair:
-                    return True
-
-    def train(self, text, chunk_dict,num_merges = 100): # English text
-        # chunk _dict = {chunk1: freq, chunk2: freq,...}
-        # init part
-        pair_freq = defaultdict(int) # pair = tuple (a,b)
-        pair_chunk = defaultdict(set)   # pair_chunk = {tuple: set(str)}
-        chunk_pair = defaultdict(list) # chunk_pair = {str: list(tuple)} ordered
-        heap = []
-        for chunk, freq in chunk_dict.items():
-            chunk_list = list(chunk)
-            for idx in range(len(chunk_list) - 1):
-                # 分解chunk得到pair_freq
-                pair = (chunk_list[idx], chunk_list[idx + 1])
-                pair_freq[pair] += freq
-                # 维护pair to chunk
-                pair_chunk[pair].add(chunk) # 这里collection.defaultdict 的用法/ 以及add和append<返回None>    PPPPPPPPPPPPoint1
-                chunk_pair[chunk].append(pair)
-       
-        
-        # 维护最大堆 pair_freq -> heap
-        for pair, freq in pair_freq.items():
-           heapq.heappush(heap, (-freq, pair))  # 维护堆                        PPPPPPPPPPPPoint2
-        
-        # loop part
-        while num_merges > 0 or heap[0][0] != -1:
-            max_freq, max_pair = heap[0]
-            max_freq = - max_freq
-            self.merge_rule.append(max_pair)
-
-            # 定位pair 影响的pair
-            chunks = pair_chunk[max_pair] # (chunk1, chunk2, ...)
-            for chunk in chunks:          
-                # 定位max_pair的位置
-                ordered_pair = chunk_pair[chunk]
-                for idx in range(len(ordered_pair)):
-                    if ordered_pair[idx] == pair:
-                        # 找到一个match的, 进行last, next， now的更改
-                        if idx != 0 and idx != len(ordered_pair):
-                            last_pair = ordered_pair[idx - 1]
-                            next_pair = ordered_pair[idx + 1]
-
-                            new_last_pair = (last_pair[0], "".join(max_pair))
-                            new_next_pair = ("".join(max_pair), next_pair[1])
-                            # update pair_freq
-                            pair_freq[new_last_pair] += max_freq
-                            pair_freq[new_next_pair] += max_freq
-
-                            pair_freq[last_pair] -= max_freq
-                            pair_freq[next_pair] -= max_freq
-
-                            pair_freq.pop(max_pair, None)
-
-                            # update pair_chunk
-                            pair_chunk[new_last_pair].add(chunk)
-                            pair_chunk[new_last_pair].add(chunk)
-
-                            if self.NotRemoveLast(ordered_pair, max_pair, last_pair):
-                                continue
-                            else:
-                                pair_chunk[last_pair].discard(chunk)
-
-                            if self.NotRemoveNext(ordered_pair, max_pair, next_pair):
-                                continue
-                            else:
-                                pair_chunk[next_pair].discard(chunk)
-
-                            pair_chunk.pop(max_pair, None)
-
-                            # update chunk_pair
-                            
-                        
-
-
-
-                
-
-        
-        
-               
-
-           
-
-            
-        
-    def pretokenizer(self) -> dict: 
-        chunk_dict ={}
-
-        return chunk_dict
-
 
 
 # tokenizer = BPETokenizer()
