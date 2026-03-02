@@ -12,66 +12,67 @@ from collections import defaultdict
 class BPETokenizer():
 
     def __init__(self):
-        self.vocab_list = []
-        self.ori_char_freq = {}
-        self.decode_table = {}
-        self.encode_table = {}
+        self.merge_rules = []
+
+        self.vocab_size = 0
+        self.decode_table = defaultdict(str)
+        self.encode_table = defaultdict(int)
     
-    def beforetrain(self, ori_text, num_merges = 100): # 缺少了pre_tokenization -> 反向索引 / 最大堆维护 /// 重新思考逻辑流程
-        # flow : word_freq word_token word_id / word_freq, word_toekn -> pair_freq / pair_word
+    # def beforetrain(self, ori_text, num_merges = 100): # 缺少了pre_tokenization -> 反向索引 / 最大堆维护 /// 重新思考逻辑流程
+    #     # flow : word_freq word_token word_id / word_freq, word_toekn -> pair_freq / pair_word
         
-        # ver3 刷新token initial
-        token = list(ori_text)
+    #     # ver3 刷新token initial
+    #     token = list(ori_text)
         
-        refresh = 1
-        while refresh:
-            num_merges -= 1
+    #     refresh = 1
+    #     while refresh:
+    #         num_merges -= 1
             
-            freq_dict = {}
+    #         freq_dict = {}
 
-            # 统计pair频率 
-            for idx in range(len(token) - 1):
-                pair = token[idx] + token[idx+1]
-                freq_dict[pair] = freq_dict.get(pair, 0) + 1
+    #         # 统计pair频率 
+    #         for idx in range(len(token) - 1):
+    #             pair = token[idx] + token[idx+1]
+    #             freq_dict[pair] = freq_dict.get(pair, 0) + 1
                       
-            if not freq_dict:
-                break
+    #         if not freq_dict:
+    #             break
             
-            # 找到最大的pair
-            max_pair = max(freq_dict, key=freq_dict.get)
-            if freq_dict[max_pair] == 1:
-                break
+    #         # 找到最大的pair
+    #         max_pair = max(freq_dict, key=freq_dict.get)
+    #         if freq_dict[max_pair] == 1:
+    #             break
 
-            # 按照最大的pair刷新token / 正向匹配
-            current_idx = 0
-            refresh = None
-            new_token = []
-            while current_idx < len(token) - 1:
-                # if ori_text[current_idx] == max_pair[0] and ori_text.startswith(max_pair, current_idx): # 直接对token而不是原始文本
-                if current_idx <= len(token) - 1 and token[current_idx] + token[current_idx + 1] == max_pair: # pair是附近+1的token组合，所以可以直接在token上操作而不是在原始文本上操作
-                    new_token.append(max_pair)
-                    current_idx += 2
-                    refresh = 1
-                else:
-                    new_token += [token[current_idx]]
-                    current_idx += 1
+    #         # 按照最大的pair刷新token / 正向匹配
+    #         current_idx = 0
+    #         refresh = None
+    #         new_token = []
+    #         while current_idx < len(token) - 1:
+    #             # if ori_text[current_idx] == max_pair[0] and ori_text.startswith(max_pair, current_idx): # 直接对token而不是原始文本
+    #             if current_idx <= len(token) - 1 and token[current_idx] + token[current_idx + 1] == max_pair: # pair是附近+1的token组合，所以可以直接在token上操作而不是在原始文本上操作
+    #                 new_token.append(max_pair)
+    #                 current_idx += 2
+    #                 refresh = 1
+    #             else:
+    #                 new_token += [token[current_idx]]
+    #                 current_idx += 1
             
-            token = new_token
+    #         token = new_token
             
-            if num_merges == 0:
-                break
+    #         if num_merges == 0:
+    #             break
 
-            if num_merges == 0:
-                break
+    #         if num_merges == 0:
+    #             break
 
 
-        token = sorted(list(set(token)))      
-        # 最新token 映射
-        for idx, char in enumerate(token):
-            self.encode_table[char] = idx
-            self.decode_table[idx] = char
+    #     token = sorted(list(set(token)))      
+    #     # 最新token 映射
+    #     for idx, char in enumerate(token):
+    #         self.encode_table[char] = idx
+    #         self.decode_table[idx] = char
         
-        return token
+    #     return token
     
     # ver3 pro
     def train(self, chunks, num_merges= 100):
@@ -143,6 +144,8 @@ class BPETokenizer():
                         # 最后再放加入的merge
                         new_token.append("".join(max_pair))
                         idx += 2
+
+                        self.merge_rules.append(max_pair)
                     else:
                         new_token.append(token[idx])
                         idx += 1
@@ -156,6 +159,29 @@ class BPETokenizer():
             chunk_token[chunk] = token
 
         return chunk_token
+
+    def build_vocab(self, chunk_token):
+        # 建立vocab_id映射表
+        vocabs= set()
+        for tokens in chunk_token.values():
+            for t in tokens:
+                vocabs.add(t)
+
+        # 建立映射表
+        vocabs = sorted(list(vocabs))
+        self.vocab_size = len(vocabs)
+
+        for idx, vocab in enumerate(vocabs):
+            self.encode_table[vocab] = idx
+            self.decode_table[idx] = vocab
+
+        print(f"词表构建完成，词表大小：{self.vocab_size}")
+    
+    def encode(self):
+
+        return 
+        
+
     
     # # ver3 pro previous
 
