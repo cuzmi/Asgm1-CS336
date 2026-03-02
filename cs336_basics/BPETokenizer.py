@@ -17,8 +17,8 @@ class BPETokenizer():
         self.decode_table = {}
         self.encode_table = {}
     
-    def train(self, ori_text, num_merges = 100): # 缺少了pre_tokenization -> 反向索引 / 最大堆维护 /// 重新思考逻辑流程
-        
+    def beforetrain(self, ori_text, num_merges = 100): # 缺少了pre_tokenization -> 反向索引 / 最大堆维护 /// 重新思考逻辑流程
+        # flow : word_freq word_token word_id / word_freq, word_toekn -> pair_freq / pair_word
         
         # ver3 刷新token initial
         token = list(ori_text)
@@ -29,11 +29,11 @@ class BPETokenizer():
             
             freq_dict = {}
 
-            # 统计pair频率
+            # 统计pair频率 
             for idx in range(len(token) - 1):
                 pair = token[idx] + token[idx+1]
                 freq_dict[pair] = freq_dict.get(pair, 0) + 1
-            
+                      
             if not freq_dict:
                 break
             
@@ -61,6 +61,9 @@ class BPETokenizer():
             if num_merges == 0:
                 break
 
+            if num_merges == 0:
+                break
+
 
         token = sorted(list(set(token)))      
         # 最新token 映射
@@ -70,6 +73,177 @@ class BPETokenizer():
         
         return token
     
+    # ver3 pro
+    def train(self, chunks, num_merges= 100):
+        # 把token改为所有的pre tokenization的结果 改成word的freq
+        # 进来的是 {word: freq}
+        id_word = defaultdict(int) # {id: word}
+        word_freq = defaultdict(int) # {id: freq}
+        word_token = defaultdict(list) # {id: token}
+
+        id = 0
+        for word, freq in chunks.items():
+            id_word[id] = word
+            word_freq[id] = freq
+            token = list(word)
+            word_token[id] = token
+            id += 1
+    
+        pair_freq = defaultdict(int)
+        for id, token in word_token.items():
+            for idx in range(len(token) - 1):
+                pair = (token[idx], token[idx + 1])
+                pair_freq[pair] += word_freq[id] # {("z","a"): int}
+
+        while num_merges:
+            num_merges -= 1
+            
+            pair_freq = defaultdict(int, {k: v for k, v in pair_freq.items() if v > 0})     # ✅：多出的维护步骤
+            if not pair_freq:
+                break
+
+                    
+            heap = []
+            # 找到最大的pair, 维护一个最大堆
+            for pair, freq in pair_freq.items():
+                heapq.heappush(heap, (-freq, pair))
+
+            # 找到最大的pair，刷新token，更新变量pair_freq, 同时后面用新的token来取代word_token
+            max_pair = heap[0][1]
+
+            for id, token in word_token.items():
+                new_token = []
+                if len(token) < 2:
+                    continue
+                # 正向查找是否匹配
+                idx = 0
+                while idx < len(token):
+                    if idx < len(token) - 1 and (token[idx], token[idx + 1]) == max_pair:
+                        # 修改max_pair影响的pair
+                        current_freq = word_freq[id]
+                        last_pair = new_last_pair = None
+                        next_pair = new_next_pair = None
+
+                        if idx > 0:
+                            last_pair = (new_token[-1], token[idx]). # ✅：这里的new_token很有意思
+                            new_last_pair = (new_token[-1], "".join(max_pair))
+                        if idx + 2 < len(token):
+                            next_pair = (token[idx + 1], token[idx + 2])
+                            new_next_pair = ("".join(max_pair), token[idx + 2])
+
+                        if last_pair:
+                            pair_freq[last_pair] -= current_freq    
+                            pair_freq[new_last_pair] += current_freq
+                        if next_pair:
+                            pair_freq[next_pair] -= current_freq
+                            pair_freq[new_next_pair] += current_freq
+                        
+                        pair_freq[max_pair] -= current_freq
+
+                        # 最后再放加入的merge
+                        new_token.append("".join(max_pair))
+                        idx += 2
+                    else:
+                        new_token.append(token[idx])
+                        idx += 1
+                
+                # 修改word_token
+                word_token[id] = new_token
+
+        chunk_token = defaultdict(list)
+        for id, token in word_token.items():
+            chunk = id_word[id]
+            chunk_token[chunk] = token
+
+        return chunk_token
+    
+    # # ver3 pro previous
+
+    # def train(self, chunks, num_merges= 100):   
+    #     # 把token改为所有的pre tokenization的结果 改成word的freq
+
+    #     # 进来的是 {word: freq}
+
+    #     id_word = defaultdict(int) # {id: word}
+    #     word_freq = defaultdict(int) # {id: freq}
+    #     word_token = defaultdict(list) # {id: token}
+
+    #     id = 0
+    #     for word, freq in chunks.items():
+    #         id_word[word] = id
+    #         word_freq[id] = freq
+    #         token = list(word)
+    #         word_token[word] = token
+
+
+    #     while num_merges:
+    #         num_merges -= 1
+    #         pair_freq = defaultdict(int)
+
+    #         # pair的频率
+
+    #         for id, token in word_token.items():
+    #             for idx in range(len(token) - 1):
+    #                 pair = (token[idx], token[idx + 1])
+    #                 pair_freq[pair] += word_freq[id] # {("z","a"): int}
+
+    #         if not pair_freq:
+    #             break
+
+    #         heap = []
+    #         # 找到最大的pair, 维护一个最大堆
+    #         for pair, freq in pair_freq.items():
+    #             heapq.heappush(heap, (-freq, pair))
+
+    #         # 找到最大的pair，刷新token，更新变量pair_freq, 同时后面用新的token来取代word_token
+
+    #         max_pair = heap[0][1]
+    #         max_freq = - heap[0][0]
+
+    #         for id, token in word_token.items():
+    #             new_token = []
+
+    #         # 正向查找是否匹配
+    #         for idx in range(len(token) - 1):
+    #             if (token[idx], token[idx + 1]) == max_pair:
+    #                 new_token.append(max_pair)
+    #                 idx += 2
+
+    #                 # 修改max_pair影响的pair
+    #                 if idx > 0:
+    #                     last_pair = (token[idx - 1], token[idx])
+    #                     new_last_pair = (token[idx - 1], "".join(max_pair))
+    #                 if idx + 2 <= len(token):
+    #                     next_pair = (token[idx + 1], token[idx + 2])
+    #                     new_next_pair = ("".join(max_pair), token[idx + 2])
+
+
+    #                 if last_pair:
+    #                     pair_freq[last_pair] -= 1
+    #                     pair_freq[new_last_pair] += 1
+    #                 if next_pair:
+    #                     pair_freq[next_pair] -= 1
+    #                     pair_freq[new_next_pair] += 1
+
+    #                 pair_freq[max_pair] -= 1
+
+    #             else:
+    #                 new_token.append(token[idx])
+    #                 idx += 1
+
+
+    #         # 修改word_token
+    #         word_token[id] = new_token
+
+
+
+    #     chunk_token = defaultdict(list)
+    #     for id, token in word_token.items():
+    #             chunk = id_word[id]
+    #             chunk_token[chunk] = token
+
+    #     return chunk_token
+
     # 以我目前的能力，无法写出只修改merge两侧的频率来实现更高效的bpe的内容
     # def tokenizer(self, chunks_pair):
     #     # 根据chunk_pair来确认每个pair的freq, chunk_pair = {chunk1: freq1,}
@@ -169,3 +343,19 @@ class BPETokenizer():
 # print(('on running'))
 # token = tokenizer.train(text)
 # print(f'token是{token}')
+
+# 统计了文本中单词的出现频率
+chunks = {
+    "low": 5,
+    "lower": 2,
+    "newest": 6,
+    "widest": 3
+}
+
+# 实例化你的 Tokenizer 并运行
+tokenizer = BPETokenizer()
+# 假设我们只合并 10 次
+result = tokenizer.train(chunks, num_merges=3)
+
+for chunk, token in result.items():
+    print(f"原词: {chunk:8} -> 拆解: {token}")
