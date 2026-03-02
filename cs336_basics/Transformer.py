@@ -3,16 +3,6 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 
-# B,T,C
-batch_size = 8
-block_size = 128
-n_embd = 64
-vocab_size = 512
-
-dropout = 0.2
-
-
-
 class AttentionHead(nn.Module):
     # normal attention head - k,q,v, head_size - B,T,C -> B,T,head_size
     def __init__(self, head_size):
